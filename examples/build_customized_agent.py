@@ -10,21 +10,19 @@ import subprocess
 import fire
 
 from metagpt.actions import Action
-from metagpt.llm import LLM
 from metagpt.logs import logger
-from metagpt.roles import Role
+from metagpt.roles.role import Role, RoleReactMode
 from metagpt.schema import Message
 
 
 class SimpleWriteCode(Action):
-    PROMPT_TEMPLATE = """
-    Write a python function that can {instruction} and provide two runnnable test cases.
+    PROMPT_TEMPLATE: str = """
+    Write a python function that can {instruction} and provide two runnable test cases.
     Return ```python your_code_here ``` with NO other texts,
     your code:
     """
 
-    def __init__(self, name: str = "SimpleWriteCode", context=None, llm: LLM = None):
-        super().__init__(name, context, llm)
+    name: str = "SimpleWriteCode"
 
     async def run(self, instruction: str):
         prompt = self.PROMPT_TEMPLATE.format(instruction=instruction)
@@ -44,8 +42,7 @@ class SimpleWriteCode(Action):
 
 
 class SimpleRunCode(Action):
-    def __init__(self, name: str = "SimpleRunCode", context=None, llm: LLM = None):
-        super().__init__(name, context, llm)
+    name: str = "SimpleRunCode"
 
     async def run(self, code_text: str):
         result = subprocess.run(["python3", "-c", code_text], capture_output=True, text=True)
@@ -55,18 +52,16 @@ class SimpleRunCode(Action):
 
 
 class SimpleCoder(Role):
-    def __init__(
-        self,
-        name: str = "Alice",
-        profile: str = "SimpleCoder",
-        **kwargs,
-    ):
-        super().__init__(name, profile, **kwargs)
-        self._init_actions([SimpleWriteCode])
+    name: str = "Alice"
+    profile: str = "SimpleCoder"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.set_actions([SimpleWriteCode])
 
     async def _act(self) -> Message:
-        logger.info(f"{self._setting}: ready to {self._rc.todo}")
-        todo = self._rc.todo  # todo will be SimpleWriteCode()
+        logger.info(f"{self._setting}: to do {self.rc.todo}({self.rc.todo.name})")
+        todo = self.rc.todo  # todo will be SimpleWriteCode()
 
         msg = self.get_memories(k=1)[0]  # find the most recent messages
         code_text = await todo.run(msg.content)
@@ -76,27 +71,25 @@ class SimpleCoder(Role):
 
 
 class RunnableCoder(Role):
-    def __init__(
-        self,
-        name: str = "Alice",
-        profile: str = "RunnableCoder",
-        **kwargs,
-    ):
-        super().__init__(name, profile, **kwargs)
-        self._init_actions([SimpleWriteCode, SimpleRunCode])
-        self._set_react_mode(react_mode="by_order")
+    name: str = "Alice"
+    profile: str = "RunnableCoder"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.set_actions([SimpleWriteCode, SimpleRunCode])
+        self._set_react_mode(react_mode=RoleReactMode.BY_ORDER.value)
 
     async def _act(self) -> Message:
-        logger.info(f"{self._setting}: ready to {self._rc.todo}")
+        logger.info(f"{self._setting}: to do {self.rc.todo}({self.rc.todo.name})")
         # By choosing the Action by order under the hood
         # todo will be first SimpleWriteCode() then SimpleRunCode()
-        todo = self._rc.todo
+        todo = self.rc.todo
 
         msg = self.get_memories(k=1)[0]  # find the most k recent messages
         result = await todo.run(msg.content)
 
         msg = Message(content=result, role=self.profile, cause_by=type(todo))
-        self._rc.memory.add(msg)
+        self.rc.memory.add(msg)
         return msg
 
 

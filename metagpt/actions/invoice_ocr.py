@@ -12,6 +12,7 @@ import os
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 from paddleocr import PaddleOCR
@@ -36,8 +37,8 @@ class InvoiceOCR(Action):
 
     """
 
-    def __init__(self, name: str = "", *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
+    name: str = "InvoiceOCR"
+    i_context: Optional[str] = None
 
     @staticmethod
     async def _check_file_type(file_path: Path) -> str:
@@ -84,6 +85,8 @@ class InvoiceOCR(Action):
     async def _ocr(invoice_file_path: Path):
         ocr = PaddleOCR(use_angle_cls=True, lang="ch", page_num=1)
         ocr_result = ocr.ocr(str(invoice_file_path), cls=True)
+        for result in ocr_result[0]:
+            result[1] = (result[1][0], round(result[1][1], 2))  # round long confidence scores to reduce token costs
         return ocr_result
 
     async def run(self, file_path: Path, *args, **kwargs) -> list:
@@ -125,9 +128,9 @@ class GenerateTable(Action):
 
     """
 
-    def __init__(self, name: str = "", language: str = "ch", *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
-        self.language = language
+    name: str = "GenerateTable"
+    i_context: Optional[str] = None
+    language: str = "ch"
 
     async def run(self, ocr_results: list, filename: str, *args, **kwargs) -> dict[str, str]:
         """Processes OCR results, extracts invoice information, generates a table, and saves it as an Excel file.
@@ -169,9 +172,7 @@ class ReplyQuestion(Action):
 
     """
 
-    def __init__(self, name: str = "", language: str = "ch", *args, **kwargs):
-        super().__init__(name, *args, **kwargs)
-        self.language = language
+    language: str = "ch"
 
     async def run(self, query: str, ocr_result: list, *args, **kwargs) -> str:
         """Reply to questions based on ocr results.

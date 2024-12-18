@@ -8,7 +8,7 @@
 """
 import pytest
 
-from metagpt.schema import AIMessage, Message, RawMessage, SystemMessage, UserMessage
+from metagpt.schema import AIMessage, Message, SystemMessage, UserMessage
 
 
 def test_message():
@@ -23,18 +23,10 @@ def test_all_messages():
         UserMessage(test_content),
         SystemMessage(test_content),
         AIMessage(test_content),
-        Message(test_content, role="QA"),
+        Message(content=test_content, role="QA"),
     ]
     for msg in msgs:
         assert msg.content == test_content
-
-
-def test_raw_message():
-    msg = RawMessage(role="user", content="raw")
-    assert msg["role"] == "user"
-    assert msg["content"] == "raw"
-    with pytest.raises(KeyError):
-        assert msg["1"] == 1, "KeyError: '1'"
 
 
 if __name__ == "__main__":

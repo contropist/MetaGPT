@@ -17,7 +17,6 @@ from git.repo import Repo
 from git.repo.fun import is_git_dir
 from gitignore_parser import parse_gitignore
 
-from metagpt.const import DEFAULT_WORKSPACE_ROOT
 from metagpt.logs import logger
 from metagpt.utils.dependency_file import DependencyFile
 from metagpt.utils.file_repository import FileRepository
@@ -79,7 +78,7 @@ class GitRepository:
         self._repository = Repo.init(path=Path(local_path))
 
         gitignore_filename = Path(local_path) / ".gitignore"
-        ignores = ["__pycache__", "*.pyc"]
+        ignores = ["__pycache__", "*.pyc", ".vs"]
         with open(str(gitignore_filename), mode="w") as writer:
             writer.write("\n".join(ignores))
         self._repository.index.add([".gitignore"])
@@ -108,7 +107,10 @@ class GitRepository:
     def delete_repository(self):
         """Delete the entire repository directory."""
         if self.is_valid:
-            shutil.rmtree(self._repository.working_dir)
+            try:
+                shutil.rmtree(self._repository.working_dir)
+            except Exception as e:
+                logger.exception(f"Failed delete git repo:{self.workdir}, error:{e}")
 
     @property
     def changed_files(self) -> Dict[str, str]:
@@ -199,11 +201,21 @@ class GitRepository:
         new_path = self.workdir.parent / new_dir_name
         if new_path.exists():
             logger.info(f"Delete directory {str(new_path)}")
-            shutil.rmtree(new_path)
+            try:
+                shutil.rmtree(new_path)
+            except Exception as e:
+                logger.warning(f"rm {str(new_path)} error: {e}")
+        if new_path.exists():  # Recheck for windows os
+            logger.warning(f"Failed to delete directory {str(new_path)}")
+            return
         try:
             shutil.move(src=str(self.workdir), dst=str(new_path))
         except Exception as e:
             logger.warning(f"Move {str(self.workdir)} to {str(new_path)} error: {e}")
+        finally:
+            if not new_path.exists():  # Recheck for windows os
+                logger.warning(f"Failed to move {str(self.workdir)} to {str(new_path)}")
+                return
         logger.info(f"Rename directory {str(self.workdir)} to {str(new_path)}")
         self._repository = Repo(new_path)
         self._gitignore_rules = parse_gitignore(full_path=str(new_path / ".gitignore"))
@@ -271,20 +283,3 @@ class GitRepository:
                 continue
             files.append(filename)
         return files
-
-
-if __name__ == "__main__":
-    path = DEFAULT_WORKSPACE_ROOT / "git"
-    path.mkdir(exist_ok=True, parents=True)
-
-    repo = GitRepository()
-    repo.open(path, auto_init=True)
-    repo.filter_gitignore(filenames=["snake_game/snake_game/__pycache__", "snake_game/snake_game/game.py"])
-
-    changes = repo.changed_files
-    print(changes)
-    repo.add_change(changes)
-    print(repo.status)
-    repo.commit("test")
-    print(repo.status)
-    repo.delete_repository()

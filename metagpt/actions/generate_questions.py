@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-@Time    : 2023/9/12 17:45
-@Author  : fisherdeng
 @File    : generate_questions.py
 """
 from metagpt.actions import Action
@@ -21,5 +19,7 @@ class GenerateQuestions(Action):
     """This class allows LLM to further mine noteworthy details based on specific "##TOPIC"(discussion topic) and
     "##RECORD" (discussion records), thereby deepening the discussion."""
 
-    async def run(self, context):
+    name: str = "GenerateQuestions"
+
+    async def run(self, context) -> ActionNode:
         return await QUESTIONS.fill(context=context, llm=self.llm)

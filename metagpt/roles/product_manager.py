@@ -7,10 +7,11 @@
 @Modified By: mashenquan, 2023/11/27. Add `PrepareDocuments` action according to Section 2.2.3.5.1 of RFC 135.
 """
 
+
 from metagpt.actions import UserRequirement, WritePRD
 from metagpt.actions.prepare_documents import PrepareDocuments
-from metagpt.config import CONFIG
-from metagpt.roles import Role
+from metagpt.roles.role import Role, RoleReactMode
+from metagpt.utils.common import any_to_name
 
 
 class ProductManager(Role):
@@ -24,34 +25,19 @@ class ProductManager(Role):
         constraints (str): Constraints or limitations for the product manager.
     """
 
-    def __init__(
-        self,
-        name: str = "Alice",
-        profile: str = "Product Manager",
-        goal: str = "efficiently create a successful product that meets market demands and user expectations",
-        constraints: str = "utilize the same language as the user requirements for seamless communication",
-    ) -> None:
-        """
-        Initializes the ProductManager role with given attributes.
+    name: str = "Alice"
+    profile: str = "Product Manager"
+    goal: str = "efficiently create a successful product that meets market demands and user expectations"
+    constraints: str = "utilize the same language as the user requirements for seamless communication"
+    todo_action: str = ""
 
-        Args:
-            name (str): Name of the product manager.
-            profile (str): Role profile.
-            goal (str): Goal of the product manager.
-            constraints (str): Constraints or limitations for the product manager.
-        """
-        super().__init__(name, profile, goal, constraints)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
 
-        self._init_actions([PrepareDocuments, WritePRD])
+        self.set_actions([PrepareDocuments, WritePRD])
         self._watch([UserRequirement, PrepareDocuments])
-
-    async def _think(self) -> None:
-        """Decide what to do"""
-        if CONFIG.git_repo:
-            self._set_state(1)
-        else:
-            self._set_state(0)
-        return self._rc.todo
+        self.rc.react_mode = RoleReactMode.BY_ORDER
+        self.todo_action = any_to_name(WritePRD)
 
     async def _observe(self, ignore_memory=False) -> int:
         return await super()._observe(ignore_memory=True)

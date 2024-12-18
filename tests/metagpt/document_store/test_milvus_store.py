@@ -1,36 +1,48 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-@Time    : 2023/6/11 21:08
-@Author  : alexanderwu
-@File    : test_milvus_store.py
-"""
 import random
 
-import numpy as np
+import pytest
 
 from metagpt.document_store.milvus_store import MilvusConnection, MilvusStore
-from metagpt.logs import logger
 
-book_columns = {"idx": int, "name": str, "desc": str, "emb": np.ndarray, "price": float}
-book_data = [
-    [i for i in range(10)],
-    [f"book-{i}" for i in range(10)],
-    [f"book-desc-{i}" for i in range(10000, 10010)],
-    [[random.random() for _ in range(2)] for _ in range(10)],
-    [random.random() for _ in range(10)],
-]
+seed_value = 42
+random.seed(seed_value)
+
+vectors = [[random.random() for _ in range(8)] for _ in range(10)]
+ids = [f"doc_{i}" for i in range(10)]
+metadata = [{"color": "red", "rand_number": i % 10} for i in range(10)]
 
 
+def assert_almost_equal(actual, expected):
+    delta = 1e-10
+    if isinstance(expected, list):
+        assert len(actual) == len(expected)
+        for ac, exp in zip(actual, expected):
+            assert abs(ac - exp) <= delta, f"{ac} is not within {delta} of {exp}"
+    else:
+        assert abs(actual - expected) <= delta, f"{actual} is not within {delta} of {expected}"
+
+
+@pytest.mark.skip()  # Skip because the pymilvus dependency is not installed by default
 def test_milvus_store():
-    milvus_connection = MilvusConnection(alias="default", host="192.168.50.161", port="30530")
+    milvus_connection = MilvusConnection(uri="./milvus_local.db")
     milvus_store = MilvusStore(milvus_connection)
-    milvus_store.drop("Book")
-    milvus_store.create_collection("Book", book_columns)
-    milvus_store.add(book_data)
-    milvus_store.build_index("emb")
-    milvus_store.load_collection()
 
-    results = milvus_store.search([[1.0, 1.0]], field="emb")
-    logger.info(results)
-    assert results
+    collection_name = "TestCollection"
+    milvus_store.create_collection(collection_name, dim=8)
+
+    milvus_store.add(collection_name, ids, vectors, metadata)
+
+    search_results = milvus_store.search(collection_name, query=[1.0] * 8)
+    assert len(search_results) > 0
+    first_result = search_results[0]
+    assert first_result["id"] == "doc_0"
+
+    search_results_with_filter = milvus_store.search(collection_name, query=[1.0] * 8, filter={"rand_number": 1})
+    assert len(search_results_with_filter) > 0
+    assert search_results_with_filter[0]["id"] == "doc_1"
+
+    milvus_store.delete(collection_name, _ids=["doc_0"])
+    deleted_results = milvus_store.search(collection_name, query=[1.0] * 8, limit=1)
+    assert deleted_results[0]["id"] != "doc_0"
+
+    milvus_store.client.drop_collection(collection_name)

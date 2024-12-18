@@ -7,17 +7,26 @@
 @Modified By: mashenquan, 2023/11/27. Add an archiving operation after completing the project, as specified in
         Section 2.2.3.3 of RFC 135.
 """
+
 import warnings
-from pydantic import BaseModel, Field
+from pathlib import Path
+from typing import Any, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from metagpt.actions import UserRequirement
-from metagpt.config import CONFIG
-from metagpt.const import MESSAGE_ROUTE_TO_ALL
+from metagpt.const import MESSAGE_ROUTE_TO_ALL, SERDESER_PATH
+from metagpt.context import Context
 from metagpt.environment import Environment
 from metagpt.logs import logger
 from metagpt.roles import Role
 from metagpt.schema import Message
-from metagpt.utils.common import NoMoneyException
+from metagpt.utils.common import (
+    NoMoneyException,
+    read_json_file,
+    serialize_decorator,
+    write_json_file,
+)
 
 
 class Team(BaseModel):
@@ -26,26 +35,66 @@ class Team(BaseModel):
     dedicated to env any multi-agent activity, such as collaboratively writing executable code.
     """
 
-    env: Environment = Field(default_factory=Environment)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    env: Optional[Environment] = None
     investment: float = Field(default=10.0)
     idea: str = Field(default="")
 
-    class Config:
-        arbitrary_types_allowed = True
+    def __init__(self, context: Context = None, **data: Any):
+        super(Team, self).__init__(**data)
+        ctx = context or Context()
+        if not self.env:
+            self.env = Environment(context=ctx)
+        else:
+            self.env.context = ctx  # The `env` object is allocated by deserialization
+        if "roles" in data:
+            self.hire(data["roles"])
+        if "env_desc" in data:
+            self.env.desc = data["env_desc"]
+
+    def serialize(self, stg_path: Path = None):
+        stg_path = SERDESER_PATH.joinpath("team") if stg_path is None else stg_path
+        team_info_path = stg_path.joinpath("team.json")
+        serialized_data = self.model_dump()
+        serialized_data["context"] = self.env.context.serialize()
+
+        write_json_file(team_info_path, serialized_data)
+
+    @classmethod
+    def deserialize(cls, stg_path: Path, context: Context = None) -> "Team":
+        """stg_path = ./storage/team"""
+        # recover team_info
+        team_info_path = stg_path.joinpath("team.json")
+        if not team_info_path.exists():
+            raise FileNotFoundError(
+                "recover storage meta file `team.json` not exist, " "not to recover and please start a new project."
+            )
+
+        team_info: dict = read_json_file(team_info_path)
+        ctx = context or Context()
+        ctx.deserialize(team_info.pop("context", None))
+        team = Team(**team_info, context=ctx)
+        return team
 
     def hire(self, roles: list[Role]):
         """Hire roles to cooperate"""
         self.env.add_roles(roles)
 
+    @property
+    def cost_manager(self):
+        """Get cost manager"""
+        return self.env.context.cost_manager
+
     def invest(self, investment: float):
         """Invest company. raise NoMoneyException when exceed max_budget."""
         self.investment = investment
-        CONFIG.max_budget = investment
+        self.cost_manager.max_budget = investment
         logger.info(f"Investment: ${investment}.")
 
     def _check_balance(self):
-        if CONFIG.total_cost > CONFIG.max_budget:
-            raise NoMoneyException(CONFIG.total_cost, f"Insufficient funds: {CONFIG.max_budget}")
+        if self.cost_manager.total_cost >= self.cost_manager.max_budget:
+            raise NoMoneyException(self.cost_manager.total_cost, f"Insufficient funds: {self.cost_manager.max_budget}")
 
     def run_project(self, idea, send_to: str = ""):
         """Run a project from publishing user requirement."""
@@ -53,7 +102,8 @@ class Team(BaseModel):
 
         # Human requirement.
         self.env.publish_message(
-            Message(role="Human", content=idea, cause_by=UserRequirement, send_to=send_to or MESSAGE_ROUTE_TO_ALL)
+            Message(role="Human", content=idea, cause_by=UserRequirement, send_to=send_to or MESSAGE_ROUTE_TO_ALL),
+            peekable=False,
         )
 
     def start_project(self, idea, send_to: str = ""):
@@ -61,22 +111,28 @@ class Team(BaseModel):
         Deprecated: This method will be removed in the future.
         Please use the `run_project` method instead.
         """
-        warnings.warn("The 'start_project' method is deprecated and will be removed in the future. "
-                      "Please use the 'run_project' method instead.",
-                      DeprecationWarning, stacklevel=2)
+        warnings.warn(
+            "The 'start_project' method is deprecated and will be removed in the future. "
+            "Please use the 'run_project' method instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.run_project(idea=idea, send_to=send_to)
 
-    def _save(self):
-        logger.info(self.json(ensure_ascii=False))
-
-    async def run(self, n_round=3):
+    @serialize_decorator
+    async def run(self, n_round=3, idea="", send_to="", auto_archive=True):
         """Run company until target round or no money"""
+        if idea:
+            self.run_project(idea=idea, send_to=send_to)
+
         while n_round > 0:
-            # self._save()
+            if self.env.is_idle:
+                logger.debug("All roles are idle.")
+                break
             n_round -= 1
-            logger.debug(f"max {n_round=} left.")
             self._check_balance()
             await self.env.run()
-        if CONFIG.git_repo:
-            CONFIG.git_repo.archive()
+
+            logger.debug(f"max {n_round=} left.")
+        self.env.archive(auto_archive)
         return self.env.history

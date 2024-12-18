@@ -10,5 +10,4 @@ from metagpt.actions import Action
 class FixBug(Action):
     """Fix bug action without any implementation details"""
 
-    async def run(self, *args, **kwargs):
-        raise NotImplementedError
+    name: str = "FixBug"

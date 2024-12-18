@@ -8,8 +8,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from metagpt.config import Config
-
 
 class BaseStore(ABC):
     """FIXME: consider add_index, set_index and think about granularity."""
@@ -31,8 +29,8 @@ class LocalStore(BaseStore, ABC):
     def __init__(self, raw_data_path: Path, cache_dir: Path = None):
         if not raw_data_path:
             raise FileNotFoundError
-        self.config = Config()
         self.raw_data_path = raw_data_path
+        self.fname = self.raw_data_path.stem
         if not cache_dir:
             cache_dir = raw_data_path.parent
         self.cache_dir = cache_dir
@@ -40,10 +38,9 @@ class LocalStore(BaseStore, ABC):
         if not self.store:
             self.store = self.write()
 
-    def _get_index_and_store_fname(self):
-        fname = self.raw_data_path.name.split(".")[0]
-        index_file = self.cache_dir / f"{fname}.index"
-        store_file = self.cache_dir / f"{fname}.pkl"
+    def _get_index_and_store_fname(self, index_ext=".json", docstore_ext=".json"):
+        index_file = self.cache_dir / "default__vector_store" / index_ext
+        store_file = self.cache_dir / "docstore" / docstore_ext
         return index_file, store_file
 
     @abstractmethod
