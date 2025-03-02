@@ -5,12 +5,15 @@
 @Author  : alexanderwu
 @File    : design_api_review.py
 """
+
+from typing import Optional
+
 from metagpt.actions.action import Action
 
 
 class DesignReview(Action):
-    def __init__(self, name, context=None, llm=None):
-        super().__init__(name, context, llm)
+    name: str = "DesignReview"
+    i_context: Optional[str] = None
 
     async def run(self, prd, api_design):
         prompt = (

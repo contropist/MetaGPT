@@ -11,16 +11,12 @@ from pathlib import Path
 from typing import Optional, Union
 
 import pandas as pd
-from langchain.document_loaders import (
-    TextLoader,
-    UnstructuredPDFLoader,
-    UnstructuredWordDocumentLoader,
-)
-from langchain.text_splitter import CharacterTextSplitter
-from pydantic import BaseModel, Field
+from llama_index.core import Document, SimpleDirectoryReader
+from llama_index.core.node_parser import SimpleNodeParser
+from llama_index.readers.file import PDFReader
+from pydantic import BaseModel, ConfigDict, Field
 from tqdm import tqdm
 
-from metagpt.config import CONFIG
 from metagpt.logs import logger
 from metagpt.repo_parser import RepoParser
 
@@ -30,7 +26,7 @@ def validate_cols(content_col: str, df: pd.DataFrame):
         raise ValueError("Content column not found in DataFrame.")
 
 
-def read_data(data_path: Path):
+def read_data(data_path: Path) -> Union[pd.DataFrame, list[Document]]:
     suffix = data_path.suffix
     if ".xlsx" == suffix:
         data = pd.read_excel(data_path)
@@ -39,14 +35,13 @@ def read_data(data_path: Path):
     elif ".json" == suffix:
         data = pd.read_json(data_path)
     elif suffix in (".docx", ".doc"):
-        data = UnstructuredWordDocumentLoader(str(data_path), mode="elements").load()
+        data = SimpleDirectoryReader(input_files=[str(data_path)]).load_data()
     elif ".txt" == suffix:
-        data = TextLoader(str(data_path)).load()
-        text_splitter = CharacterTextSplitter(separator="\n", chunk_size=256, chunk_overlap=0)
-        texts = text_splitter.split_documents(data)
-        data = texts
+        data = SimpleDirectoryReader(input_files=[str(data_path)]).load_data()
+        node_parser = SimpleNodeParser.from_defaults(separator="\n", chunk_size=256, chunk_overlap=0)
+        data = node_parser.get_nodes_from_documents(data)
     elif ".pdf" == suffix:
-        data = UnstructuredPDFLoader(str(data_path), mode="elements").load()
+        data = PDFReader.load_data(str(data_path))
     else:
         raise NotImplementedError("File format not supported.")
     return data
@@ -103,6 +98,7 @@ class Document(BaseModel):
             raise ValueError("File path is not set.")
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # TODO: excel, csv, json, etc.
         self.path.write_text(self.content, encoding="utf-8")
 
     def persist(self):
@@ -117,21 +113,25 @@ class IndexableDocument(Document):
     Advanced document handling: For vector databases or search engines.
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     data: Union[pd.DataFrame, list]
     content_col: Optional[str] = Field(default="")
     meta_col: Optional[str] = Field(default="")
-
-    class Config:
-        arbitrary_types_allowed = True
 
     @classmethod
     def from_path(cls, data_path: Path, content_col="content", meta_col="metadata"):
         if not data_path.exists():
             raise FileNotFoundError(f"File {data_path} not found.")
         data = read_data(data_path)
-        content = data_path.read_text()
         if isinstance(data, pd.DataFrame):
             validate_cols(content_col, data)
+            return cls(data=data, content=str(data), content_col=content_col, meta_col=meta_col)
+        try:
+            content = data_path.read_text()
+        except Exception as e:
+            logger.debug(f"Load {str(data_path)} error: {e}")
+            content = ""
         return cls(data=data, content=content, content_col=content_col, meta_col=meta_col)
 
     def _get_docs_and_metadatas_by_df(self) -> (list, list):
@@ -146,9 +146,9 @@ class IndexableDocument(Document):
                 metadatas.append({})
         return docs, metadatas
 
-    def _get_docs_and_metadatas_by_langchain(self) -> (list, list):
+    def _get_docs_and_metadatas_by_llamaindex(self) -> (list, list):
         data = self.data
-        docs = [i.page_content for i in data]
+        docs = [i.text for i in data]
         metadatas = [i.metadata for i in data]
         return docs, metadatas
 
@@ -156,7 +156,7 @@ class IndexableDocument(Document):
         if isinstance(self.data, pd.DataFrame):
             return self._get_docs_and_metadatas_by_df()
         elif isinstance(self.data, list):
-            return self._get_docs_and_metadatas_by_langchain()
+            return self._get_docs_and_metadatas_by_llamaindex()
         else:
             raise NotImplementedError("Data type not supported for metadata extraction.")
 
@@ -214,7 +214,7 @@ class Repo(BaseModel):
             self.assets[path] = doc
         return doc
 
-    def set(self, content: str, filename: str):
+    def set(self, filename: str, content: str):
         """Set a document and persist it to disk."""
         path = self._path(filename)
         doc = self._set(content, path)
@@ -233,24 +233,3 @@ class Repo(BaseModel):
         n_chars = sum(sum(len(j.content) for j in i.values()) for i in [self.docs, self.codes, self.assets])
         symbols = RepoParser(base_directory=self.path).generate_symbols()
         return RepoMetadata(name=self.name, n_docs=n_docs, n_chars=n_chars, symbols=symbols)
-
-
-def set_existing_repo(path=CONFIG.workspace_path / "t1"):
-    repo1 = Repo.from_path(path)
-    repo1.set("wtf content", "doc/wtf_file.md")
-    repo1.set("wtf code", "code/wtf_file.py")
-    logger.info(repo1)  # check doc
-
-
-def load_existing_repo(path=CONFIG.workspace_path / "web_tetris"):
-    repo = Repo.from_path(path)
-    logger.info(repo)
-    logger.info(repo.eda())
-
-
-def main():
-    load_existing_repo()
-
-
-if __name__ == "__main__":
-    main()

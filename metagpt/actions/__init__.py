@@ -13,7 +13,7 @@ from metagpt.actions.add_requirement import UserRequirement
 from metagpt.actions.debug_error import DebugError
 from metagpt.actions.design_api import WriteDesign
 from metagpt.actions.design_api_review import DesignReview
-from metagpt.actions.project_management import AssignTasks, WriteTasks
+from metagpt.actions.project_management import WriteTasks
 from metagpt.actions.research import CollectLinks, WebBrowseAndSummarize, ConductResearch
 from metagpt.actions.run_code import RunCode
 from metagpt.actions.search_and_summarize import SearchAndSummarize
@@ -22,6 +22,9 @@ from metagpt.actions.write_code_review import WriteCodeReview
 from metagpt.actions.write_prd import WritePRD
 from metagpt.actions.write_prd_review import WritePRDReview
 from metagpt.actions.write_test import WriteTest
+from metagpt.actions.di.execute_nb_code import ExecuteNbCode
+from metagpt.actions.di.write_analysis_code import WriteAnalysisCode
+from metagpt.actions.di.write_plan import WritePlan
 
 
 class ActionType(Enum):
@@ -38,11 +41,13 @@ class ActionType(Enum):
     RUN_CODE = RunCode
     DEBUG_ERROR = DebugError
     WRITE_TASKS = WriteTasks
-    ASSIGN_TASKS = AssignTasks
     SEARCH_AND_SUMMARIZE = SearchAndSummarize
     COLLECT_LINKS = CollectLinks
     WEB_BROWSE_AND_SUMMARIZE = WebBrowseAndSummarize
     CONDUCT_RESEARCH = ConductResearch
+    EXECUTE_NB_CODE = ExecuteNbCode
+    WRITE_ANALYSIS_CODE = WriteAnalysisCode
+    WRITE_PLAN = WritePlan
 
 
 __all__ = [

@@ -14,31 +14,31 @@ from metagpt.schema import RunCodeContext
 
 @pytest.mark.asyncio
 async def test_run_text():
-    result, errs = await RunCode.run_text("result = 1 + 1")
-    assert result == 2
-    assert errs == ""
+    out, err = await RunCode.run_text("result = 1 + 1")
+    assert out == 2
+    assert err == ""
 
-    result, errs = await RunCode.run_text("result = 1 / 0")
-    assert result == ""
-    assert "ZeroDivisionError" in errs
+    out, err = await RunCode.run_text("result = 1 / 0")
+    assert out == ""
+    assert "division by zero" in err
 
 
 @pytest.mark.asyncio
-async def test_run_script():
+async def test_run_script(context):
     # Successful command
-    out, err = await RunCode.run_script(".", command=["echo", "Hello World"])
+    out, err = await RunCode(context=context).run_script(".", command=["echo", "Hello World"])
     assert out.strip() == "Hello World"
     assert err == ""
 
     # Unsuccessful command
-    out, err = await RunCode.run_script(".", command=["python", "-c", "print(1/0)"])
+    out, err = await RunCode(context=context).run_script(".", command=["python", "-c", "print(1/0)"])
     assert "ZeroDivisionError" in err
 
 
 @pytest.mark.asyncio
-async def test_run():
+async def test_run(context):
     inputs = [
-        (RunCodeContext(mode="text", code_filename="a.txt", code="print('Hello, World')"), "PASS"),
+        (RunCodeContext(mode="text", code_filename="a.txt", code="result = 'helloworld'"), "PASS"),
         (
             RunCodeContext(
                 mode="script",
@@ -61,5 +61,5 @@ async def test_run():
         ),
     ]
     for ctx, result in inputs:
-        rsp = await RunCode(context=ctx).run()
+        rsp = await RunCode(i_context=ctx, context=context).run()
         assert result in rsp.summary

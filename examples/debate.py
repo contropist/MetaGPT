@@ -5,8 +5,10 @@ Author: garylin2099
 @Modified By: mashenquan, 2023-11-1. In accordance with Chapter 2.1.3 of RFC 116, modify the data type of the `send_to`
         value of the `Message` object; modify the argument type of `get_by_actions`.
 """
+
 import asyncio
 import platform
+from typing import Any
 
 import fire
 
@@ -20,7 +22,7 @@ from metagpt.team import Team
 class SpeakAloud(Action):
     """Action: Speak out aloud in a debate (quarrel)"""
 
-    PROMPT_TEMPLATE = """
+    PROMPT_TEMPLATE: str = """
     ## BACKGROUND
     Suppose you are {name}, you are in a debate with {opponent_name}.
     ## DEBATE HISTORY
@@ -30,9 +32,7 @@ class SpeakAloud(Action):
     Now it's your turn, you should closely respond to your opponent's latest argument, state your position, defend your arguments, and attack your opponent's arguments,
     craft a strong and emotional response in 80 words, in {name}'s rhetoric and viewpoints, your will argue:
     """
-
-    def __init__(self, name="SpeakAloud", context=None, llm=None):
-        super().__init__(name, context, llm)
+    name: str = "SpeakAloud"
 
     async def run(self, context: str, name: str, opponent_name: str):
         prompt = self.PROMPT_TEMPLATE.format(context=context, name=name, opponent_name=opponent_name)
@@ -44,27 +44,24 @@ class SpeakAloud(Action):
 
 
 class Debator(Role):
-    def __init__(
-        self,
-        name: str,
-        profile: str,
-        opponent_name: str,
-        **kwargs,
-    ):
-        super().__init__(name, profile, **kwargs)
-        self._init_actions([SpeakAloud])
+    name: str = ""
+    profile: str = ""
+    opponent_name: str = ""
+
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        self.set_actions([SpeakAloud])
         self._watch([UserRequirement, SpeakAloud])
-        self.opponent_name = opponent_name
 
     async def _observe(self) -> int:
         await super()._observe()
         # accept messages sent (from opponent) to self, disregard own messages from the last round
-        self._rc.news = [msg for msg in self._rc.news if msg.send_to == {self.name}]
-        return len(self._rc.news)
+        self.rc.news = [msg for msg in self.rc.news if msg.send_to == {self.name}]
+        return len(self.rc.news)
 
     async def _act(self) -> Message:
-        logger.info(f"{self._setting}: ready to {self._rc.todo}")
-        todo = self._rc.todo  # An instance of SpeakAloud
+        logger.info(f"{self._setting}: to do {self.rc.todo}({self.rc.todo.name})")
+        todo = self.rc.todo  # An instance of SpeakAloud
 
         memories = self.get_memories()
         context = "\n".join(f"{msg.sent_from}: {msg.content}" for msg in memories)
@@ -79,7 +76,7 @@ class Debator(Role):
             sent_from=self.name,
             send_to=self.opponent_name,
         )
-        self._rc.memory.add(msg)
+        self.rc.memory.add(msg)
 
         return msg
 
@@ -109,4 +106,4 @@ def main(idea: str, investment: float = 3.0, n_round: int = 10):
 
 
 if __name__ == "__main__":
-    fire.Fire(main)
+    fire.Fire(main)  # run as python debate.py --idea="TOPIC" --investment=3.0 --n_round=5

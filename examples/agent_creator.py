@@ -6,7 +6,7 @@ Author: garylin2099
 import re
 
 from metagpt.actions import Action
-from metagpt.config import CONFIG
+from metagpt.config2 import config
 from metagpt.const import METAGPT_ROOT
 from metagpt.logs import logger
 from metagpt.roles import Role
@@ -17,7 +17,7 @@ MULTI_ACTION_AGENT_CODE_EXAMPLE = EXAMPLE_CODE_FILE.read_text()
 
 
 class CreateAgent(Action):
-    PROMPT_TEMPLATE = """
+    PROMPT_TEMPLATE: str = """
     ### BACKGROUND
     You are using an agent framework called metagpt to write agents capable of different actions,
     the usage of metagpt can be illustrated by the following example:
@@ -48,28 +48,25 @@ class CreateAgent(Action):
         pattern = r"```python(.*)```"
         match = re.search(pattern, rsp, re.DOTALL)
         code_text = match.group(1) if match else ""
-        CONFIG.workspace_path.mkdir(parents=True, exist_ok=True)
-        new_file = CONFIG.workspace_path / "agent_created_agent.py"
+        config.workspace.path.mkdir(parents=True, exist_ok=True)
+        new_file = config.workspace.path / "agent_created_agent.py"
         new_file.write_text(code_text)
         return code_text
 
 
 class AgentCreator(Role):
-    def __init__(
-        self,
-        name: str = "Matrix",
-        profile: str = "AgentCreator",
-        agent_template: str = MULTI_ACTION_AGENT_CODE_EXAMPLE,
-        **kwargs,
-    ):
-        super().__init__(name, profile, **kwargs)
-        self._init_actions([CreateAgent])
-        self.agent_template = agent_template
+    name: str = "Matrix"
+    profile: str = "AgentCreator"
+    agent_template: str = MULTI_ACTION_AGENT_CODE_EXAMPLE
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.set_actions([CreateAgent])
 
     async def _act(self) -> Message:
-        logger.info(f"{self._setting}: ready to {self._rc.todo}")
-        todo = self._rc.todo
-        msg = self._rc.memory.get()[-1]
+        logger.info(f"{self._setting}: to do {self.rc.todo}({self.rc.todo.name})")
+        todo = self.rc.todo
+        msg = self.rc.memory.get()[-1]
 
         instruction = msg.content
         code_text = await CreateAgent().run(example=self.agent_template, instruction=instruction)
@@ -85,10 +82,6 @@ if __name__ == "__main__":
         agent_template = MULTI_ACTION_AGENT_CODE_EXAMPLE
 
         creator = AgentCreator(agent_template=agent_template)
-
-        # msg = """Write an agent called SimpleTester that will take any code snippet (str)
-        #     and return a testing code (str) for testing
-        #     the given code snippet. Use pytest as the testing framework."""
 
         msg = """
         Write an agent called SimpleTester that will take any code snippet (str) and do the following:
